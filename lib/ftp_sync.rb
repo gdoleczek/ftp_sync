@@ -50,7 +50,6 @@ class FtpSync
       entry = Net::FTP::List.parse(e)
       
       paths = [ File.join(localpath, entry.basename), "#{remotepath}/#{entry.basename}".gsub(/\/+/, '/') ]
-      p "entry base: #{entry.basename}; #{entry}"
 
       if entry.basename != '.' and entry.basename != '..'
         if entry.dir?
