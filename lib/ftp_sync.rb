@@ -9,7 +9,7 @@ require 'fileutils'
 # newer than that timestamp, or only download files newer than their local copy.
 class FtpSync
   
-  attr_accessor :verbose, :server, :user, :password, :passive
+  attr_accessor :verbose, :server, :user, :password, :passive, :port
   
   # Creates a new instance for accessing a ftp server 
   # requires +server+, +user+, and +password+ options
@@ -24,6 +24,7 @@ class FtpSync
     @recursion_level = 0
     @verbose = options[:verbose] || false
     @passive = options[:passive] || false
+    @port = options[:port] || 21
   end
   
   # Recursively pull down files
@@ -50,18 +51,20 @@ class FtpSync
       
       paths = [ File.join(localpath, entry.basename), "#{remotepath}/#{entry.basename}".gsub(/\/+/, '/') ]
 
-      if entry.dir?
-        recurse << paths
-      elsif entry.file?
-        if options[:since] == :src
-          tocopy << paths unless File.exist?(paths[0]) and entry.mtime < File.mtime(paths[0]) and entry.filesize == File.size(paths[0])
-        elsif options[:since].is_a?(Time)
-          tocopy << paths unless entry.mtime < options[:since] and File.exist?(paths[0]) and entry.filesize == File.size(paths[0])
-        else
-          tocopy << paths
+      if entry.basename != '.' and entry.basename != '..'
+        if entry.dir?
+          recurse << paths
+        elsif entry.file?
+          if options[:since] == :src
+            tocopy << paths unless File.exist?(paths[0]) and entry.mtime < File.mtime(paths[0]) and entry.filesize == File.size(paths[0])
+          elsif options[:since].is_a?(Time)
+            tocopy << paths unless entry.mtime < options[:since] and File.exist?(paths[0]) and entry.filesize == File.size(paths[0])
+          else
+            tocopy << paths
+          end
         end
+        todelete.delete paths[0]
       end
-      todelete.delete paths[0]
     end
     
     tocopy.each do |paths|
@@ -100,6 +103,9 @@ class FtpSync
   # Recursively push a local directory of files onto an FTP server
   def push_dir(localpath, remotepath)
     connect!
+    localpath.gsub!(/\/$/, '')
+
+    mkdir_p(remotepath)
     
     Dir.glob(File.join(localpath, '**', '*')) do |f|
       f.gsub!("#{localpath}/", '')
@@ -167,7 +173,8 @@ class FtpSync
   
   private
     def connect!
-      @connection = Net::FTP.new(@server)
+      @connection = Net::FTP.new()
+      @connection.connect(@server, @port)
       @connection.passive = @passive
       @connection.login(@user, @password)
       log "Opened connection to #{@server}"
@@ -192,5 +199,13 @@ class FtpSync
     
     def log(msg)
       puts msg if @verbose
+    end
+
+    def mkdir_p(path)
+      nested_dir = ''
+      path.split('/').each do |directory|
+        @connection.mkdir("#{nested_dir}#{directory}") rescue Net::FTPPermError
+        nested_dir << "/#{directory}"
+      end
     end
 end
